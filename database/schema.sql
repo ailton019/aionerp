@@ -444,3 +444,59 @@ INSERT INTO public.agendamentos (id, loja_id, cliente_id, profissional_id, servi
 (2, 1, 4, 1, 2, date_trunc('hour', now() + interval '2 days' + interval '14 hours'), 'confirmado', 129.00, 'Limpeza de Pele');
 
 SELECT setval('public.agendamentos_id_seq', 2);
+
+
+
+As rotinas de Agendamentos e Mesas & Comandas são controladas por flags booleanas na tabela public.config_loja associadas ao loja_id (tenant) de cada empresa.
+
+Abaixo estão os comandos SQL para ativar ou remover (desativar) essas funcionalidades no banco de dados.
+
+(Substitua 1 pelo ID da loja desejada em loja_id)
+
+1. Rotina de Agendamentos (Estética / Serviços)
+Para ATIVAR:
+
+-sql
+
+
+UPDATE public.config_loja 
+SET habilitar_agendamentos = true 
+WHERE loja_id = 1;
+Para REMOVER (desativar):
+
+sql
+
+
+UPDATE public.config_loja 
+SET habilitar_agendamentos = false 
+WHERE loja_id = 1;
+2. Rotina de Mesas & Comandas (Restaurante / Alimentação)
+Para ATIVAR:
+
+sql
+
+
+UPDATE public.config_loja 
+SET habilitar_mesas = true 
+WHERE loja_id = 1;
+Para REMOVER (desativar):
+
+sql
+
+
+UPDATE public.config_loja 
+SET habilitar_mesas = false 
+WHERE loja_id = 1;
+3. Verificar o status atual das configurações de uma loja
+Caso queira checar o que está ativo em cada loja:
+
+sql
+
+
+SELECT 
+    loja_id, 
+    nome_fantasia, 
+    habilitar_agendamentos, 
+    habilitar_mesas, 
+    habilitar_seriais 
+FROM public.config_loja;

@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mesas & Comandas - Aion ERP</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="icon" type="image/x-icon" href="./assets/img/telefone.png">
+    <style>
+        .restaurant-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+        
+        .mesa-card {
+            background: white;
+            border-radius: 12px;
+            padding: 20px 16px;
+            text-align: center;
+            box-shadow: var(--shadow-sm);
+            border-top: 4px solid var(--success);
+            transition: all 0.3s ease;
+            position: relative;
+            cursor: pointer;
+        }
+        
+        .mesa-card:hover {
+            transform: translateY(-3px);
+            box-shadow: var(--shadow-md);
+        }
+        
+        .mesa-card.status-ocupada { border-top-color: var(--danger); }
+        .mesa-card.status-fechando { border-top-color: var(--warning); }
+        
+        .mesa-icon {
+            font-size: 32px;
+            margin-bottom: 10px;
+        }
+        
+        .mesa-numero {
+            font-size: 18px;
+            font-weight: 700;
+            color: var(--carbon-black);
+        }
+        
+        .mesa-status {
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-top: 6px;
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 10px;
+        }
+        
+        .status-badge-livre { background: #d1e7dd; color: #0f5132; }
+        .status-badge-ocupada { background: #f8d7da; color: #842029; }
+        .status-badge-fechando { background: #fef3c7; color: #d97706; }
+        
+        .mesa-valor {
+            font-size: 15px;
+            font-weight: 700;
+            color: var(--primary);
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body class="hold-transition">
+    <div class="dashboard">
+        <!-- Sidebar renderizada via auth-check.js -->
+        <aside class="sidebar"></aside>
+        
+        <main class="main-content">
+            <header class="top-bar">
+                <button class="menu-toggle" id="menuToggle">☰</button>
+                <div class="user-info">
+                    <span class="user-name" id="userName">Carregando...</span>
+                    <span class="user-perfil" id="userPerfil"></span>
+                    <button class="logout-btn" id="logoutBtn">Sair</button>
+                </div>
+            </header>
+            
+            <div class="content">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 12px;">
+                    <div>
+                        <h1>🍔 Mesas & Comandas</h1>
+                        <p style="font-size: 13px; color: var(--gray); margin-top: 4px;">Gerenciamento de consumo e atendimento em tempo real</p>
+                    </div>
+                    <div style="display: flex; gap: 8px;">
+                        <button class="btn-primary" id="btnNovaMesa">+ Adicionar Mesa/Comanda</button>
+                    </div>
+                </div>
+                
+                <div class="filters-container" style="display: flex; gap: 12px; margin-bottom: 24px; flex-wrap: wrap;">
+                    <select id="filtroTipo" style="padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 14px;">
+                        <option value="">Todos os Tipos</option>
+                        <option value="mesa">Mesa</option>
+                        <option value="comanda">Comanda</option>
+                    </select>
+                    <select id="filtroStatus" style="padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 14px;">
+                        <option value="">Todos os Status</option>
+                        <option value="livre">Livre</option>
+                        <option value="ocupada">Ocupada</option>
+                        <option value="fechando">Pedindo Conta</option>
+                    </select>
+                </div>
+                
+                <div id="restaurantContainer" class="restaurant-grid">
+                    <div style="grid-column: 1 / -1; text-align: center; padding: 40px; color: var(--gray);">Carregando mesas...</div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Modal Nova Mesa/Comanda -->
+    <div id="modalMesa" class="modal">
+        <div class="modal-content" style="max-width: 400px;">
+            <div class="modal-header">
+                <h2 id="modalTitle">Nova Mesa / Comanda</h2>
+                <span class="close">&times;</span>
+            </div>
+            <div class="modal-body">
+                <form id="mesaForm">
+                    <input type="hidden" id="mesaId">
+                    
+                    <div class="form-group">
+                        <label class="required-label">Identificação / Número</label>
+                        <input type="text" id="numero" placeholder="Ex: Mesa 05, Comanda 112" required style="width:100%; padding:10px; border-radius:8px; border:1px solid var(--border);">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label class="required-label">Tipo</label>
+                        <select id="tipo" required style="width:100%; padding:10px; border-radius:8px; border:1px solid var(--border);">
+                            <option value="mesa">Mesa</option>
+                            <option value="comanda">Comanda</option>
+                        </select>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-warning" id="btnCancelarModal">Cancelar</button>
+                <button class="btn-primary" id="btnSalvarMesa">Criar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Gerenciar Consumo -->
+    <div id="modalConsumo" class="modal">
+        <div class="modal-content" style="max-width: 500px;">
+            <div class="modal-header">
+                <h2 id="consumoTitle">Gerenciar Mesa</h2>
+                <span class="close" id="closeConsumo">&times;</span>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="consumoMesaId">
+                <div style="background: var(--light); padding: 15px; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid var(--primary);">
+                    <div style="font-size: 13px; color: var(--gray); text-transform: uppercase; font-weight: bold; letter-spacing: 0.5px;">Consumo Acumulado</div>
+                    <div style="font-size: 28px; font-weight: 800; color: var(--carbon-black); margin-top: 4px;" id="consumoValorTotal">R$ 0,00</div>
+                </div>
+                
+                <div class="form-group">
+                    <label>Adicionar Lançamento (Valor em R$)</label>
+                    <div style="display: flex; gap: 8px;">
+                        <input type="number" step="0.01" id="lancamentoValor" placeholder="Ex: 25.50" style="flex: 1; padding:10px; border-radius:8px; border:1px solid var(--border);">
+                        <button type="button" class="btn-primary" id="btnAdicionarLancamentoRapido" style="padding: 10px 16px; border-radius: 8px; white-space: nowrap; font-weight: 600;">➕ Lançar</button>
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <label>Status</label>
+                    <select id="consumoStatus" style="width:100%; padding:10px; border-radius:8px; border:1px solid var(--border);">
+                        <option value="livre">Livre (Limpar Consumo)</option>
+                        <option value="ocupada">Ocupada (Consumindo)</option>
+                        <option value="fechando">Pedindo Conta</option>
+                    </select>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-warning" id="btnCancelarConsumo">Cancelar</button>
+                <button class="btn-success" id="btnLancarVendaMesa" style="display:none;">🛍️ Fechar e Criar Venda</button>
+                <button class="btn-primary" id="btnAtualizarConsumo">Atualizar</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/config.js"></script>
+    <script src="js/auth-check.js"></script>
+    <script src="js/mesas.js"></script>
+    <script src="js/active-nav.js"></script>
+</body>
+</html>

@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Agendamentos - Aion ERP</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="icon" type="image/x-icon" href="./assets/img/telefone.png">
+    <style>
+        .scheduler-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+        
+        .appointment-card {
+            background: white;
+            border-radius: 12px;
+            padding: 16px;
+            box-shadow: var(--shadow-sm);
+            border-left: 5px solid var(--primary);
+            position: relative;
+            transition: all 0.3s ease;
+        }
+        
+        .appointment-card:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-md);
+        }
+        
+        .appointment-card.status-agendado { border-left-color: var(--warning); }
+        .appointment-card.status-confirmado { border-left-color: var(--primary); }
+        .appointment-card.status-concluido { border-left-color: var(--success); }
+        .appointment-card.status-cancelado { border-left-color: var(--danger); opacity: 0.7; }
+        
+        .appointment-time {
+            font-size: 18px;
+            font-weight: 700;
+            color: var(--carbon-black);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        
+        .appointment-details {
+            margin-top: 10px;
+            font-size: 13px;
+            color: var(--charcoal-brown);
+        }
+        
+        .appointment-actions {
+            margin-top: 14px;
+            display: flex;
+            gap: 8px;
+            justify-content: flex-end;
+        }
+        
+        .badge-status {
+            position: absolute;
+            top: 16px;
+            right: 16px;
+            font-size: 11px;
+            font-weight: 600;
+            padding: 2px 8px;
+            border-radius: 12px;
+        }
+        .badge-agendado { background: #fef3c7; color: #d97706; }
+        .badge-confirmado { background: #e0f2fe; color: #0284c7; }
+        .badge-concluido { background: #d1e7dd; color: #0f5132; }
+        .badge-cancelado { background: #f8d7da; color: #842029; }
+        
+        .form-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 15px;
+        }
+        
+        @media (max-width: 768px) {
+            .form-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body class="hold-transition">
+    <div class="dashboard">
+        <!-- Sidebar renderizada via auth-check.js -->
+        <aside class="sidebar"></aside>
+        
+        <main class="main-content">
+            <header class="top-bar">
+                <button class="menu-toggle" id="menuToggle">☰</button>
+                <div class="user-info">
+                    <span class="user-name" id="userName">Carregando...</span>
+                    <span class="user-perfil" id="userPerfil"></span>
+                    <button class="logout-btn" id="logoutBtn">Sair</button>
+                </div>
+            </header>
+            
+            <div class="content">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 12px;">
+                    <div>
+                        <h1>💅 Agendamentos de Serviços</h1>
+                        <p style="font-size: 13px; color: var(--gray); margin-top: 4px;">Gerenciamento de horários, profissionais e serviços de estética</p>
+                    </div>
+                    <button class="btn-primary" id="btnNovoAgendamento">+ Novo Agendamento</button>
+                </div>
+                
+                <div class="filters-container" style="display: flex; gap: 12px; margin-bottom: 24px; flex-wrap: wrap;">
+                    <input type="date" id="filtroData" style="padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 14px;">
+                    <select id="filtroProfissional" style="padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 14px;">
+                        <option value="">Todos Profissionais</option>
+                    </select>
+                    <select id="filtroStatus" style="padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 14px;">
+                        <option value="">Todos Status</option>
+                        <option value="agendado">Agendado</option>
+                        <option value="confirmado">Confirmado</option>
+                        <option value="concluido">Concluído</option>
+                        <option value="cancelado">Cancelado</option>
+                    </select>
+                </div>
+                
+                <div id="agendamentosContainer" class="scheduler-grid">
+                    <div style="grid-column: 1 / -1; text-align: center; padding: 40px; color: var(--gray);">Carregando agendamentos...</div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Modal Agendamento -->
+    <div id="modalAgendamento" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="modalTitle">Novo Agendamento</h2>
+                <span class="close">&times;</span>
+            </div>
+            <div class="modal-body">
+                <form id="agendamentoForm">
+                    <input type="hidden" id="agendamentoId">
+                    
+                    <div class="form-group">
+                        <label class="required-label">Cliente</label>
+                        <select id="clienteId" required style="width:100%; padding:10px; border-radius:8px; border:1px solid var(--border);">
+                            <option value="">Selecione um cliente</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label class="required-label">Serviço</label>
+                        <select id="servicoId" required style="width:100%; padding:10px; border-radius:8px; border:1px solid var(--border);">
+                            <option value="">Selecione um serviço</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label class="required-label">Profissional</label>
+                        <select id="profissionalId" required style="width:100%; padding:10px; border-radius:8px; border:1px solid var(--border);">
+                            <option value="">Selecione um profissional</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-row form-grid">
+                        <div class="form-group">
+                            <label class="required-label">Data e Hora</label>
+                            <input type="datetime-local" id="dataHora" required style="width:100%; padding:10px; border-radius:8px; border:1px solid var(--border);">
+                        </div>
+                        <div class="form-group">
+                            <label class="required-label">Valor cobrado (R$)</label>
+                            <input type="number" step="0.01" id="valor" required style="width:100%; padding:10px; border-radius:8px; border:1px solid var(--border);">
+                        </div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Observações</label>
+                        <textarea id="observacoes" rows="3" style="width:100%; padding:10px; border-radius:8px; border:1px solid var(--border);"></textarea>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-warning" id="btnCancelarModal">Cancelar</button>
+                <button class="btn-primary" id="btnSalvarAgendamento">Salvar</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/config.js"></script>
+    <script src="js/auth-check.js"></script>
+    <script src="js/agendamentos.js"></script>
+    <script src="js/active-nav.js"></script>
+</body>
+</html>

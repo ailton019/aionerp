@@ -11,7 +11,24 @@ if (!SUPABASE_ANON_KEY) {
 
 // Criar cliente Supabase
 if (typeof supabaseClient === 'undefined') {
-    var supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    const headers = {};
+    const usuarioStr = sessionStorage.getItem('usuario');
+    if (usuarioStr) {
+        try {
+            const usuario = JSON.parse(usuarioStr);
+            if (usuario && usuario.loja_id) {
+                headers['x-tenant-id'] = String(usuario.loja_id);
+            }
+        } catch (e) {
+            console.error('Erro ao injetar loja_id nos cabeçalhos:', e);
+        }
+    }
+    
+    var supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+        global: {
+            headers: headers
+        }
+    });
 }
 
 // =====================================================

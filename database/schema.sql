@@ -238,22 +238,136 @@ CREATE OR REPLACE VIEW public.produtos_serial AS
 SELECT id, produto_id, numero_serie AS serial, imei, disponivel, data_entrada 
 FROM public.produtos_seriais;
 
--- 16. DESABILITAR RLS (ROW LEVEL SECURITY)
--- Necessário para o frontend realizar consultas diretamente usando a anon key
-ALTER TABLE public.lojas DISABLE ROW LEVEL SECURITY;
-ALTER TABLE public.usuarios DISABLE ROW LEVEL SECURITY;
-ALTER TABLE public.categorias DISABLE ROW LEVEL SECURITY;
-ALTER TABLE public.clientes DISABLE ROW LEVEL SECURITY;
-ALTER TABLE public.produtos DISABLE ROW LEVEL SECURITY;
-ALTER TABLE public.produtos_seriais DISABLE ROW LEVEL SECURITY;
-ALTER TABLE public.entradas DISABLE ROW LEVEL SECURITY;
-ALTER TABLE public.entrada_itens DISABLE ROW LEVEL SECURITY;
-ALTER TABLE public.saidas DISABLE ROW LEVEL SECURITY;
-ALTER TABLE public.saida_itens DISABLE ROW LEVEL SECURITY;
-ALTER TABLE public.movimentos_estoque DISABLE ROW LEVEL SECURITY;
-ALTER TABLE public.config_loja DISABLE ROW LEVEL SECURITY;
-ALTER TABLE public.agendamentos DISABLE ROW LEVEL SECURITY;
-ALTER TABLE public.mesas_comandas DISABLE ROW LEVEL SECURITY;
+-- 16. HABILITAR RLS (ROW LEVEL SECURITY) E POLÍTICAS DE SEGURANÇA
+-- Garante o isolamento correto dos dados por loja (tenant) usando o cabeçalho x-tenant-id
+
+-- Habilitar RLS em todas as tabelas
+ALTER TABLE public.lojas ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.usuarios ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.categorias ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.clientes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.produtos ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.produtos_seriais ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.entradas ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.entrada_itens ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.saidas ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.saida_itens ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.movimentos_estoque ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.config_loja ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.agendamentos ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.mesas_comandas ENABLE ROW LEVEL SECURITY;
+
+-- Função auxiliar para obter o ID da loja a partir do cabeçalho HTTP
+CREATE OR REPLACE FUNCTION public.obter_loja_id_requisicao()
+RETURNS integer
+LANGUAGE sql STABLE
+AS $$
+  SELECT nullif(current_setting('request.headers', true)::json->>'x-tenant-id', '')::integer;
+$$;
+
+-- Criar políticas baseadas no loja_id da requisição
+CREATE POLICY tenant_lojas_policy ON public.lojas
+    FOR ALL USING (id = public.obter_loja_id_requisicao());
+
+CREATE POLICY tenant_usuarios_policy ON public.usuarios
+    FOR ALL USING (loja_id = public.obter_loja_id_requisicao());
+
+CREATE POLICY tenant_categorias_policy ON public.categorias
+    FOR ALL USING (loja_id = public.obter_loja_id_requisicao());
+
+CREATE POLICY tenant_clientes_policy ON public.clientes
+    FOR ALL USING (loja_id = public.obter_loja_id_requisicao());
+
+CREATE POLICY tenant_produtos_policy ON public.produtos
+    FOR ALL USING (loja_id = public.obter_loja_id_requisicao());
+
+CREATE POLICY tenant_entradas_policy ON public.entradas
+    FOR ALL USING (loja_id = public.obter_loja_id_requisicao());
+
+CREATE POLICY tenant_saidas_policy ON public.saidas
+    FOR ALL USING (loja_id = public.obter_loja_id_requisicao());
+
+CREATE POLICY tenant_movimentos_estoque_policy ON public.movimentos_estoque
+    FOR ALL USING (loja_id = public.obter_loja_id_requisicao());
+
+CREATE POLICY tenant_config_loja_policy ON public.config_loja
+    FOR ALL USING (loja_id = public.obter_loja_id_requisicao());
+
+CREATE POLICY tenant_agendamentos_policy ON public.agendamentos
+    FOR ALL USING (loja_id = public.obter_loja_id_requisicao());
+
+CREATE POLICY tenant_mesas_comandas_policy ON public.mesas_comandas
+    FOR ALL USING (loja_id = public.obter_loja_id_requisicao());
+
+-- Políticas para tabelas dependentes (que não contêm loja_id diretamente)
+CREATE POLICY tenant_produtos_seriais_policy ON public.produtos_seriais
+    FOR ALL USING (
+        EXISTS (
+            SELECT 1 FROM public.produtos p 
+            WHERE p.id = produto_id 
+              AND p.loja_id = public.obter_loja_id_requisicao()
+        )
+    );
+
+CREATE POLICY tenant_entrada_itens_policy ON public.entrada_itens
+    FOR ALL USING (
+        EXISTS (
+            SELECT 1 FROM public.entradas e 
+            WHERE e.id = entrada_id 
+              AND e.loja_id = public.obter_loja_id_requisicao()
+        )
+    );
+
+CREATE POLICY tenant_saida_itens_policy ON public.saida_itens
+    FOR ALL USING (
+        EXISTS (
+            SELECT 1 FROM public.saidas s 
+            WHERE s.id = saida_id 
+              AND s.loja_id = public.obter_loja_id_requisicao()
+        )
+    );
+
+-- Função RPC para Autenticação segura (SECURITY DEFINER permite rodar mesmo sem RLS ativo/resolvido)
+CREATE OR REPLACE FUNCTION public.autenticar_usuario(p_email text, p_senha text)
+RETURNS TABLE (
+    id integer,
+    nome varchar,
+    email varchar,
+    perfil varchar,
+    nivel_acesso varchar,
+    ativo boolean,
+    permissoes jsonb,
+    loja_id integer,
+    loja_nome varchar,
+    loja_segmento varchar,
+    config_loja jsonb
+) 
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+BEGIN
+    RETURN QUERY
+    SELECT 
+        u.id, 
+        u.nome, 
+        u.email, 
+        u.perfil, 
+        u.nivel_acesso, 
+        u.ativo, 
+        u.permissoes, 
+        u.loja_id,
+        l.nome as loja_nome,
+        l.segmento as loja_segmento,
+        to_jsonb(c) as config_loja
+    FROM public.usuarios u
+    JOIN public.lojas l ON l.id = u.loja_id
+    LEFT JOIN public.config_loja c ON c.loja_id = u.loja_id
+    WHERE u.email = p_email 
+      AND u.senha = p_senha 
+      AND u.ativo = true;
+END;
+$$;
+
 
 -- =====================================================
 -- DADOS SEMENTES (SEED DATA) PARA TESTES E DEMONSTRAÇÃO

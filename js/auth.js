@@ -28,47 +28,41 @@ document.addEventListener('DOMContentLoaded', () => {
             btn.textContent = 'Entrando...';
             
             try {
-                // Buscar usuário na tabela usuarios com junção de lojas
+                // Autenticar chamando a RPC segura (bypassa RLS)
                 const { data, error } = await supabaseClient
-                    .from('usuarios')
-                    .select('id, nome, email, perfil, nivel_acesso, ativo, permissoes, loja_id, lojas(nome, segmento)')
-                    .eq('email', email)
-                    .eq('senha', senha)
-                    .maybeSingle();
+                    .rpc('autenticar_usuario', {
+                        p_email: email,
+                        p_senha: senha
+                    });
                 
                 if (error) {
-                    console.error('Erro na consulta:', error);
+                    console.error('Erro na autenticação:', error);
                     throw new Error('Erro ao conectar com o banco de dados');
                 }
                 
-                if (!data) {
+                if (!data || data.length === 0) {
                     throw new Error('Email ou senha inválidos!');
                 }
+
+                const userData = data[0]; // Retorna uma lista de objetos
                 
-                if (!data.ativo) {
+                if (!userData.ativo) {
                     throw new Error('Usuário inativo! Contate o administrador.');
                 }
                 
-                // Buscar as configurações da loja (recursos e verticais ativos)
-                const { data: configData } = await supabaseClient
-                    .from('config_loja')
-                    .select('*')
-                    .eq('loja_id', data.loja_id)
-                    .maybeSingle();
-
                 // Salvar sessão com todas as informações (incluindo dados do tenant/loja e configurações)
                 const usuarioLogado = {
-                    id: data.id,
-                    nome: data.nome,
-                    email: data.email,
-                    perfil: data.perfil || 'basico',
-                    nivel_acesso: data.nivel_acesso || 'basico',
-                    permissoes: data.permissoes || {},
-                    ativo: data.ativo,
-                    loja_id: data.loja_id,
-                    loja_nome: data.lojas?.nome || 'Aion ERP',
-                    loja_segmento: data.lojas?.segmento || 'eletronico',
-                    config_loja: configData || {
+                    id: userData.id,
+                    nome: userData.nome,
+                    email: userData.email,
+                    perfil: userData.perfil || 'basico',
+                    nivel_acesso: userData.nivel_acesso || 'basico',
+                    permissoes: userData.permissoes || {},
+                    ativo: userData.ativo,
+                    loja_id: userData.loja_id,
+                    loja_nome: userData.loja_nome || 'Aion ERP',
+                    loja_segmento: userData.loja_segmento || 'eletronico',
+                    config_loja: userData.config_loja || {
                         habilitar_seriais: true,
                         habilitar_agendamentos: false,
                         habilitar_mesas: false,
@@ -83,9 +77,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 await supabaseClient
                     .from('usuarios')
                     .update({ ultimo_acesso: new Date().toISOString() })
-                    .eq('id', data.id);
+                    .eq('id', userData.id);
                 
-                mostrarNotificacao(`Bem-vindo, ${data.nome}!`, 'success');
+                mostrarNotificacao(`Bem-vindo, ${userData.nome}!`, 'success');
                 
                 setTimeout(() => {
                     window.location.href = 'dashboard.html';

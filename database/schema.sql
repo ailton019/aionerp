@@ -234,7 +234,7 @@ CREATE TABLE public.mesas_comandas (
 );
 
 -- 15. VIEW COMPATIBILIDADE RETROATIVA
-CREATE OR REPLACE VIEW public.produtos_serial AS 
+CREATE OR REPLACE VIEW public.produtos_serial WITH (security_invoker = true) AS 
 SELECT id, produto_id, numero_serie AS serial, imei, disponivel, data_entrada 
 FROM public.produtos_seriais;
 
